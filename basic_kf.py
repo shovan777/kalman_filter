@@ -18,8 +18,9 @@ class PhysicalModel():
     measurement_mat: np.ndarray # measurement matrix or observation matrix H
     input_mat: np.ndarray # input matrix B
     output_mat: np.ndarray # output matrix D if inputs influence measurements
-    process_cov_mat: np.ndarray # process noise covariance matrix, P
-    meas_cov_mat: np.ndarray # measurement noise covariance matrix, Q
+    process_error_cov_mat: np.ndarray # process error covariance matrix, P
+    meas_noise_cov_mat: np.ndarray # measurement noise covariance matrix, Q
+    process_noise_cov_mat: np.ndarray # process noise covariance matrix, R
     
 
 def zero_initializer(mat_size: tuple) -> np.ndarray:
@@ -46,7 +47,7 @@ def identity_initializer(row_size: int) -> np.ndarray:
 
 
 class KalmanFilter:
-    def __init__(model: PhysicalModel, init_vals: dict):
+    def __init__(self, model: PhysicalModel, init_vals: dict):
         """Initialize the Kalman filter.
         Load all the constants with values and also
         initialize the covariance matrices.
@@ -55,50 +56,78 @@ class KalmanFilter:
             model (dict): dict containing the physical model.
             init_vals (dict): dict containing all the constants.
         """
-        for key in model.constants.keys:
+        self.model = model
+        self.delta_t = 0.01
+        for key in self.model.constants.keys:
             try:
-                model[key] = init_vals[key]
+                self.model[key] = init_vals[key]
             except KeyError as ke:
-                raise "Initilizer should have all model constants."
+                raise "Initializer should have all model constants."
     
-    def predict_next_state(model: PhysicalModel, input_v: np.ndarray) -> np.ndarray:
+    def predict_next_state(self, input_v: np.ndarray) -> np.ndarray:
         next_state_priori_v = (
-            model.transition_mat @ model.state_v + 
-            model.input_mat @ model.input_v
+            self.model.transition_mat @ self.model.state_v + 
+            self.model.input_mat @ self.model.input_v
         )
         return next_state_priori_v
 
-    def predict_measurement(model: PhysicalModel, input_v: np.ndarray) -> np.ndarray:
+    def predict_measurement(self, input_v: np.ndarray) -> np.ndarray:
+        # most of the time output_mat will be zero
+        # because the measurement is not dependent on the input
+        # in general
         measurement_estimate = (
-            model.measurement_mat @ model.state_v +
-            model.output_mat @ model.input_v
+            self.model.measurement_mat @ self.model.state_v +
+            self.model.output_mat @ self.model.input_v
         )
         return measurement_estimate
 
-    def estimate_process_noise(model: PhysicalModel):
+    def estimate_process_error(self):
         return (
-            model.transition_mat @ model.process_cov_mat @ model.transition_mat.T +
-            model.meas_cov_mat
+            self.model.transition_mat @ self.model.process_error_cov_mat @ self.model.transition_mat.T +
+            self.model.meas_noise_cov_mat
         )
 
-    def calculate_gain(model: PhysicalModel):
+    def calculate_gain(self):
         return (
-            (model.process_cov_mat @ model.measurement_mat.T) @
+            (self.model.process_error_cov_mat @ self.model.measurement_mat.T) @
             np.linalg.inv(
-                ((model.measurement_mat @ model.process_cov_mat) @
-                model.measurement_mat.T) + model.meas_noise_mat
+                ((self.model.measurement_mat @ self.model.process_error_cov_mat) @
+                self.model.measurement_mat.T) + self.model.process_noise_cov_mat
             )
         )
     
-    def calculate_innovation(model: PhysicalModel, measurement_estimate):
-        return model.measurement_v - measurement_estimate
+    def calculate_innovation(self, measurement_estimate):
+        return self.model.measurement_v - measurement_estimate
     
+    @staticmethod
     def update_next_state(
-            model: PhysicalModel, innovation_v: np.ndarray, 
+            self,
+            innovation_v: np.ndarray, 
             next_state_priori_v: np.ndarray,
             kalman_gain: np.ndarray
             ):
-        model.state_v = next_state_priori_v + kalman_gain @ innovation_v
+        self.model.state_v = next_state_priori_v + kalman_gain @ innovation_v
 
-    def update_cov_mat(model: PhysicalModel, estimated_process_noise: np.ndarray, kalman_gain: np.ndarray):
-        model.process_cov_mat = (np.eye(len(model.state_v)) - kalman_gain @ model.meas_cov_mat) @ estimated_process_noise
+    def updade_err_cov_mat(self, estimated_process_noise: np.ndarray, kalman_gain: np.ndarray):
+        self.model.process_error_cov_mat = (np.eye(len(self.model.state_v)) - kalman_gain @ self.model.meas_noise_cov_mat) @ estimated_process_noise
+
+    def kalman_step(self, input_v: np.ndarray):
+        # prediction step
+        # x = Fx + Bu
+        next_state_priori_v = self.predict_next_state(input_v)
+
+        # z = Hx + Du
+        measurement_estimate = self.predict_measurement(input_v)
+        
+        # P = FPF^T + Q
+        estimated_process_noise = self.estimate_process_error()
+
+        # update step
+        # K = PH^T(HPH^T + R)^-1
+        kalman_gain = self.calculate_gain()
+        # y_err = z - Hx
+        innovation_v = self.calculate_innovation(measurement_estimate)
+        # x = x + K*y_err
+        self.update_next_state(innovation_v, next_state_priori_v, kalman_gain)
+        # P = (I - KH)P
+        self.updade_err_cov_mat(estimated_process_noise, kalman_gain)
