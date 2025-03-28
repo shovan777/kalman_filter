@@ -1,28 +1,6 @@
 """Module to create the basic structure of kalman filter."""
 import numpy as np
-from dataclasses import dataclass, field
-from collections import OrderedDict
-
-@dataclass
-class PhysicalModel:
-    state_v: np.ndarray # state vector, X
-    input_v: np.ndarray # model inputs or input excitations
-    measurement_v: np.ndarray # sensor measurement vector, Z
-    transition_mat: np.ndarray # state transition matrix F
-    measurement_mat: np.ndarray # measurement matrix or observation matrix H
-    input_mat: np.ndarray # input matrix B
-    output_mat: np.ndarray # output matrix D if inputs influence measurements
-    process_error_cov_mat: np.ndarray # process error covariance matrix, P
-    meas_noise_cov_mat: np.ndarray # measurement noise covariance matrix, R
-    process_noise_cov_mat: np.ndarray # process noise covariance matrix, Q
-    # variables with default values
-    constants: dict = field(default_factory=OrderedDict)# contains all the constants
-    state: dict = field(default_factory=OrderedDict)# contains all the state variables, X
-    input: dict = field(default_factory=OrderedDict)# contains  all the input variables, U
-    measurement: dict = field(default_factory=OrderedDict) # contains all output variables
-    # also known as measurements Z or Y
-    # this also represents the order of the state variables
-    
+from models.base_model import PhysicalModel
     
 
 def zero_initializer(mat_size: tuple) -> np.ndarray:
@@ -124,6 +102,7 @@ class KalmanFilter:
         
         # P = FPF^T + Q
         estimated_process_noise = self.estimate_error_cov()
+        self.model.process_error_cov_mat = estimated_process_noise
 
         # update step
         # K = PH^T(HPH^T + R)^-1
@@ -138,3 +117,14 @@ class KalmanFilter:
 
         # P = (I - KH)P
         self.updade_err_cov_mat(estimated_process_noise, kalman_gain)
+
+
+class Runner:
+    """Runner class to run the kalman filter."""
+    def __init__(self, kf: KalmanFilter, delta_t: float):
+        self.delta_t = delta_t
+        self.kf = kf
+
+    def run_kalman(self, input_v: np.ndarray, actual_measurement: np.ndarray):
+        self.kf.kalman_step(input_v, actual_measurement)
+        return self.model.state_v
