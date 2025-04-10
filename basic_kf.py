@@ -92,6 +92,34 @@ class KalmanFilter:
     def updade_err_cov_mat(self, estimated_error_cov: np.ndarray, kalman_gain: np.ndarray):
         self.model.process_error_cov_mat = (np.eye(len(self.model.state_v)) - kalman_gain @ self.model.measurement_mat) @ estimated_error_cov
 
+    def predict_step(self, input_v: np.ndarray):
+        # prediction step
+        # x = Fx + Bu
+        self.model.state_v = self.predict_next_state(input_v)
+
+        # z = Hx + Du
+        self.model.measurement_v = self.predict_measurement(input_v)
+        
+        # P = FPF^T + Q
+        estimated_process_noise = self.estimate_error_cov()
+        self.model.process_error_cov_mat = estimated_process_noise
+
+    def update_step(self, actual_measurement: np.ndarray):
+        # update step
+        # K = PH^T(HPH^T + R)^-1
+        kalman_gain = self.calculate_gain()
+
+        # innovation/error
+        # y_err = z - Hx
+        innovation_v = self.calculate_innovation(actual_measurement)
+
+        # x = x + K*y_err
+        self.update_next_state(innovation_v, self.model.state_v, kalman_gain)
+
+        # P = (I - KH)P
+        self.updade_err_cov_mat(self.model.process_error_cov_mat, kalman_gain)
+    
+
     def kalman_step(self, input_v: np.ndarray, actual_measurement: np.ndarray):
         # prediction step
         # x = Fx + Bu
