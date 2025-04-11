@@ -5,6 +5,8 @@ Calculates the thermal model of a transformer using the IEEE C57.91-1995 standar
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from models.base_model import PhysicalModel
+from dataclasses import dataclass
 
 AgeingSlope = 15000
 A_110 = 9.8 * (10 ** (-18))
@@ -81,6 +83,25 @@ def calculate_equivalent_ageing_factor(temp_arr: list[float], dtime_arr: list[fl
         sum_eqa += calculate_aging_accln_factor(temp) * dtime
         sum_t += dtime
     return sum_eqa / sum_t
+
+@dataclass
+class RULHSTModel(PhysicalModel):
+    """
+    Class to calculate the Remaining Useful Life (RUL) of a 
+    transformer using the IEEE C57.91-2011 standard.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(
+            transition_mat=np.array([[1]]),
+            measurement_mat=np.array([[1]]),
+            input_mat=np.array([[-1]]),
+            output_mat=np.array([[0]]),
+            process_error_cov_mat=np.eye(1) * 0.01,
+            meas_noise_cov_mat=np.array([[10000]]),
+            process_noise_cov_mat=np.eye(1) * 0.01,
+            **kwargs,
+        )
 
 if __name__ == "__main__":
     # Calculate the temperature of the transformer
