@@ -45,23 +45,14 @@ class KalmanFilter:
         #         self.model[key] = init_vals[key]
         #     except KeyError as ke:
         #         raise "Initializer should have all model constants."
-    
     def predict_next_state(self, input_v: np.ndarray) -> np.ndarray:
-        next_state_priori = (
-            self.model.transition_mat @ self.model.state_v + 
-            self.model.input_mat @ input_v
-        )
-        return next_state_priori
+        return self.model.predict_next_state(input_v)
 
     def predict_measurement(self, input_v: np.ndarray) -> np.ndarray:
         # most of the time output_mat will be zero
         # because the measurement is not dependent on the input
         # in general
-        measurement_estimate = (
-            self.model.measurement_mat @ self.model.state_v +
-            self.model.output_mat @ input_v
-        )
-        return measurement_estimate
+        return self.model.predict_measurement(input_v)
 
     def estimate_error_cov(self):
         return (
@@ -122,29 +113,10 @@ class KalmanFilter:
 
     def kalman_step(self, input_v: np.ndarray, actual_measurement: np.ndarray):
         # prediction step
-        # x = Fx + Bu
-        self.model.state_v = self.predict_next_state(input_v)
-
-        # z = Hx + Du
-        self.model.measurement_v = self.predict_measurement(input_v)
-        
-        # P = FPF^T + Q
-        estimated_process_noise = self.estimate_error_cov()
-        self.model.process_error_cov_mat = estimated_process_noise
+        self.predict_step(input_v)
 
         # update step
-        # K = PH^T(HPH^T + R)^-1
-        kalman_gain = self.calculate_gain()
-
-        # innovation/error
-        # y_err = z - Hx
-        innovation_v = self.calculate_innovation(actual_measurement)
-
-        # x = x + K*y_err
-        self.update_next_state(innovation_v, self.model.state_v, kalman_gain)
-
-        # P = (I - KH)P
-        self.updade_err_cov_mat(estimated_process_noise, kalman_gain)
+        self.update_step(actual_measurement)
 
 
 class Runner:
