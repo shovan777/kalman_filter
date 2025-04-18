@@ -21,3 +21,35 @@ class PhysicalModel:
     measurement: dict = field(default_factory=OrderedDict) # contains all output variables
     # also known as measurements Z or Y
     # this also represents the order of the state variables
+
+    def predict_next_state(self, input_v: np.ndarray) -> np.ndarray:
+        """Predict the next state using the state transition matrix.
+
+        Args:
+            input_v (np.ndarray): The input vector.
+
+        Returns:
+            np.ndarray: The predicted next state.
+        """
+        # Predict the next state using the state transition matrix
+        next_state_priori = (
+            self.transition_mat @ self.state_v + 
+            self.input_mat @ input_v
+        )
+        return next_state_priori
+    
+    def predict_measurement(self, input_v: np.ndarray) -> np.ndarray:
+        """Predict the measurement using the measurement matrix.
+
+        Args:
+            input_v (np.ndarray): The input vector.
+
+        Returns:
+            np.ndarray: The predicted measurement.
+        """
+        # Predict the measurement using the measurement matrix
+        measurement_estimate = (
+            self.measurement_mat @ self.state_v +
+            self.output_mat @ input_v
+        )
+        return measurement_estimate
