@@ -7,6 +7,8 @@ Delta_t = 0.1  # hr
 # HST model parameters
 # TODO: find tau_h and v_hst
 # Tau_h = 0.05  # hr
+# tau_h: thermal time constant of the winding
+# v_hst: temperature gradient 
 Tau_h = 5/60  # hr
 v_hst = 1  # also from ieee guide
 # v_hst = 1 # also from ieee guide
