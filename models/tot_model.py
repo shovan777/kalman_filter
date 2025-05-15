@@ -101,7 +101,6 @@ class SUSATOTModel(PhysicalModel):
 
         cur_theta = self.state_v[0]
 
-        jacobian_mat = np.eye(3)
         theta_diff_amb = cur_theta - theta_amb
         # if theta_diff_amb < 0:
         #     theta_diff_amb = 0

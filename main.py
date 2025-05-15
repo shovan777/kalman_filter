@@ -2,149 +2,105 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-from basic_kf import PhysicalModel, KalmanFilter
-from copy import deepcopy
-from filterpy.kalman import KalmanFilter as Filter
+import pandas as pd
+import datetime
 
-# This is a simple example of a kalman filter
-Delta_t = 0.1
-
-# create the physical motion_model
-motion_model = PhysicalModel(
-    state_v=np.array([0, 0]).reshape(-1, 1),
-    input_v=np.array([0]).reshape(-1, 1),
-    measurement_v=np.array([0]).reshape(-1, 1),
-    transition_mat=np.array([[1, Delta_t], [0, 1]]),
-    measurement_mat=np.array([[1, 0]]),
-    # input_mat=np.array([[0.5 * Delta_t**2], [Delta_t]]),
-    input_mat=np.array([[0.0], [Delta_t]]),
-    output_mat=np.array([[0]]),
-    # process_error_cov_mat=np.array([[0.5 * Delta_t ** 4, 0],
-    #                                [0, Delta_t ** 2]]),
-    process_error_cov_mat=np.eye(2) * 0.01,
-    meas_noise_cov_mat=np.array([[0.01]]),
-    process_noise_cov_mat=np.eye(2) * 0.01,
-)
-
-# lets say we have a simple linear motion model
-# x = x + vt
-# then state variables are
-# x, v
-motion_model.state = {"x": 0, "v": 0}
-
-# initialize the motion_model
-motion_model.constants = {
-    "delta_t": Delta_t,
-    "process_noise_cov": 0.01,
-    "meas_noise_cov": 0.01,
-}
-
-# create a deep copy of the motion model
-motion_model_kf = deepcopy(motion_model)
-
-# initialize the kalman filter
-kf = KalmanFilter(motion_model, Delta_t, motion_model.constants)
-
-# lets say we have a sensor that measures the position
-# of the object
-acceleration_inp = np.array([2 for i in range(int(10 / Delta_t))])
-measurements = []
-
-for i in range(len(acceleration_inp)):
-    motion_model.state_v = kf.predict_next_state(acceleration_inp[i].reshape(-1, 1))
-    measurement_estimate = kf.predict_measurement(acceleration_inp[i].reshape(-1, 1))
-    measurements.append(measurement_estimate)
+from ekf import ExtendedKalmanFilter
+from models.tot_model import SUSATOTModel
 
 
-# lets add some noise to the measurement
-noisy_measurements = [
-    measurement + np.random.normal(0, 10) for measurement in measurements
-]
+# Oil Temperature
+# load oil temperature data
+# oil_df = pd.read_csv("transformer_below60.csv")
+oil_df = pd.read_csv("transformer_all.csv")
 
-# initialize new KF
-kf = KalmanFilter(motion_model_kf, Delta_t, motion_model_kf.constants)
+print(f"Data shape original: {oil_df.shape}")
+# filter out data that is above 200 degree celsius
+oil_df = oil_df[oil_df["OTI"] <= 200]
+print(f"Data shape after filtering 200: {oil_df.shape}")
 
-estimated_positions = []
-estimated_error = []
-# # now lets run the kalman filter
-for i in range(len(acceleration_inp)):
-    # run one kalman step
-    kf.kalman_step(acceleration_inp[i].reshape(-1, 1), noisy_measurements[i])
-    # get the estimated position
-    estimated_positions.append(kf.model.state_v[0])
-    # calculate the confidence interval
-    estimated_error.append(6 * np.sqrt(kf.model.process_error_cov_mat[0, 0])) 
+# filter out data that is below 10 degree celsius
+oil_df = oil_df[oil_df["OTI"] >= 10]
+print(f"Data shape after filtering 10: {oil_df.shape}")
 
-# I want to compare my implementation of kalman filter with the one from
-# pykalman
-kf_pykalman = Filter(dim_x=2, dim_z=1)
-kf_pykalman.x = np.array([[0], [0]])
-kf_pykalman.P = np.eye(2) * 0.01
-kf_pykalman.F = np.array([[1, Delta_t], [0, 1]])
-kf_pykalman.H = np.array([[1, 0]])
-kf_pykalman.Q = np.eye(2) * 0.01
-kf_pykalman.R = np.array([[0.01]])
-# kf_pykalman.B = np.array([[0.5 * Delta_t**2], [Delta_t]])
-kf_pykalman.B = np.array([[0.0], [Delta_t]])
-# kf_pykalman.u = np.array([[0]])
+# filter out data if ATI is less than 10 degree celsius
+oil_df = oil_df[oil_df["ATI"] >= 10]
+print(f"Data shape after filtering ATI: {oil_df.shape}")
 
-estimated_positions_pykalman = []
-estimated_error_pykalman = []
-# # now lets run the kalman filter
-# # with pykalman
-for i in range(len(acceleration_inp)):
-    # run one kalman step
-    kf_pykalman.predict(acceleration_inp[i].reshape(-1, 1))
-    kf_pykalman.update(noisy_measurements[i])
-    # get the estimated position
-    estimated_positions_pykalman.append(kf_pykalman.x[0])
-    # calculate the confidence interval
-    estimated_error_pykalman.append(6 * np.sqrt(kf_pykalman.P[0, 0]))
+# calculate time delta
+# Calculate the equivalent ageing factor of the transformer
+# preserve oil_df for future use
+oil_df_copy = oil_df.copy()
+# add a new column delta_t to the dataframe which differences the time and convert to hrs
+oil_df["delta_t"] = oil_df["DeviceTimeStamp"].apply(pd.Timestamp).diff().dt.total_seconds() / 3600
+# drop first row
+oil_df = oil_df[1:]
+oil_df["cum_delta_t"] = oil_df["delta_t"].cumsum()
 
-# calculate the error between my kalman and pykalman
-# get the rms error between the two estimated positions
-estimated_positions = np.array(estimated_positions)
-estimated_positions_pykalman = np.array(estimated_positions_pykalman)
-rms_error = np.sqrt(
-    np.mean((estimated_positions - estimated_positions_pykalman) ** 2)
-)
-print(f"RMS error: {rms_error}")
+if __name__ == "__main__":
+    # get the first value of OTI
+    first_oti = oil_df["OTI"].iloc[0]
+    first_oti = 60.0
+    print(f"First OTI: {type(first_oti)}")
 
-error = np.squeeze(estimated_positions) - np.squeeze(measurements)
+    delta_t = oil_df["delta_t"].iloc[0]
 
-## bring error to unit norm
-# error = (error - np.mean(error)) / np.std(error)
-error = error / error.max()
-print(f"Error: {error.max()}")
-print(f"Confidence max: {np.max(estimated_error)}")
+    susa_tot_model = SUSATOTModel(
+        # top oil temp, oil exponent, oil time constant
+        state_v=np.array([first_oti, 0.5, 0.6]).reshape(-1, 1),
+        # R: load ratio, K load factor, delta_t, ambient temp
+        input_v=np.array([1.0, 1.0, delta_t, 25.0]).reshape(-1, 1),
+        measurement_v=np.array([0, 0, 0]).reshape(-1, 1),
+    )
 
-# plot the estimated positions
-plt.plot(estimated_positions, label="Estimated position")
-plt.plot(
-    estimated_positions_pykalman, label="Estimated position pykalman", linestyle="--"
-)
-# scatter plot the measurements in red
-plt.scatter(
-    range(len(noisy_measurements)),
-    noisy_measurements,
-    label="Measured position",
-    color="red",
-)
-# plot the actual position
-plt.plot(np.squeeze(measurements), label="Actual position")
-plt.xlabel("Time")
-plt.ylabel("Position")
-plt.legend()
-plt.show()
+    ekf = ExtendedKalmanFilter(
+        susa_tot_model,
+        1,
+        {},
+    )
 
-# # plot the error
-# plt.scatter(range(len(error)), error, label="Error")
 
-# plt.fill_between(
-#     range(len(estimated_positions)),
-#     -np.squeeze(estimated_error),
-#     np.squeeze(estimated_error),
-#     color="orange",
-#     alpha=0.5,
-# )
-# plt.show()
+    curr_max = oil_df["IL1"].max()
+    rated_current = curr_max #TODO: find out what is the actual rated current
+
+    estimated_tots = []
+    measured_tots = []
+
+    i = 0
+    start_time = datetime.datetime.now()
+
+    # run the model over the oil temperature data
+    for row in oil_df.itertuples():
+        temperature = row.OTI
+        curr = np.linalg.norm([row.IL1, row.IL2, row.IL3]) * (3 ** (1 / 2))
+        # normalize current
+        curr = curr / curr_max
+        # update model based on delta_t
+        delta_t = row.delta_t
+        # print(f"delta_t: {delta_t}")
+        # TODO: how to find R load loss ratio at rated load
+        # is it constant??
+        input_v = np.array([1.0, curr, delta_t, row.ATI]).reshape(-1, 1)
+        # # susa_tot_model.predict_next_state(input_v)
+        # ekf.kalman_step(
+        #     input_v,
+        #     np.array([temperature]).reshape(-1, 1),
+        # )
+        ekf.predict_step(input_v)
+        ekf.update_step(np.array([temperature]).reshape(-1, 1))
+        
+        
+        estimated_tots.append(np.copy(susa_tot_model.state_v[0]))
+        measured_tots.append(temperature)
+    
+    # print time taken in milliseconds
+    print(f"Time taken: {(datetime.datetime.now() - start_time).total_seconds() * 1000:.2f} ms")
+    
+    # plot the estimated temperature
+    plt.plot(oil_df["delta_t"].cumsum(), estimated_tots, label="Predicted TOT by SUSA")
+    plt.plot(oil_df["delta_t"].cumsum(), measured_tots, label="Measured TOT")
+    plt.legend()
+    plt.xlabel("Time (hours)")
+    plt.ylabel("Temperature (°C)")
+    plt.title("TOT prediction based on SUSA model starting at different TOT at 60 °C")
+    plt.savefig("estimated_tot.png")
