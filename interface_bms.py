@@ -1,0 +1,92 @@
+import time
+import serial
+# print("hello")
+# ser = serial.Serial('/dev/ttyUSB0', baudrate=9600,
+#                     parity=serial.PARITY_NONE, bytesize=serial.EIGHTBITS, timeout=1)
+
+
+codes = {
+    'battery_state': b'\xDD\xA5\x03\x00\xFF\xFD\x77',
+    'per_cell_voltage': b'\xDD\xA5\x04\x00\xFF\xFC\x77',
+    'bms_version': b'\xDD\xA5\x04\x00\xFF\xFC\x77',
+    # find soc for daly bms
+    # meaning of each of the 13 bytes:
+    # start byte, host address, command id, data length, data, checksum
+    'soc': b'\xA5\x40\x90\x08\x00\x00\x00\x00\x00\x00\x00\x00\x7d',
+}
+
+
+
+def get_cell_data(code):
+    print('inside get cell with code:', code)
+    # print('fire:', codes[code])
+    try:
+        # ser.write(codes[code])
+        # data = ser.readline()
+        data = b'\xa5\x01\x90\x08\x00\xc0\x00\x00u0\x03\xe8\x8e'
+
+        print(f'***DATA:, {data}')
+        print('length of data: ',len(data))
+    except:
+        print('invalid code')
+
+    
+    # print(data[4],data[5])
+    #volt1 = data[4] << 8
+    #volt1 = volt1|data[5]
+    # print(volt1)
+    #volt2 = data[6] << 8
+    #volt2 = volt2|data[7]
+    # print(volt2)
+    #print(data, len(data))
+    if code == 'per_cell_voltage':
+        print('inside per_Cell')
+        voltages_ordered = []
+        if data:
+            print("inside")
+            for a in range(4, len(data), 2):
+                # print(data[a])
+                if (a+1) >= len(data)-2:
+                    break
+                int_data = (data[a] << 8) | data[a+1]
+                float_data = int_data/1000
+                print(float_data)
+                voltages_ordered.append(float_data)
+        print("----------------")
+    elif code == 'battery_state':
+        print('inside battery state')
+        state = {}
+        if data:
+            for i in range(4, len(data), 2):
+                int_data = (data[a] << 8) | data[a+1]
+                print(int_data)
+        print("----------------")
+    elif code == 'soc':
+        print('inside soc')
+        if data:
+            # data is in 8 bits contained in byte 5 ~ 12
+            # voltage in byte 4 and 5, 0.1V resolution
+            # current in byte 8 and 9, 0.1A resolution offset at 30000
+            # soc in byte 10 and 11, 0.1% resolution
+            # don't understand data in byte 6 and 7
+            # below line shifts the MSB of first byte and combines with the second byte
+            # as LSB to get the 16 bit int data
+            voltage_data = ((data[4] << 8) | data[5]) / 10.0
+            current_data = (((data[8] << 8) | data[9]) - 30000) / 10.0
+            soc_data = ((data[10] << 8) | data[11]) / 10.0
+            float_data = {
+                'voltage': voltage_data,
+                'current': current_data,
+                'soc': soc_data
+            }
+            print(float_data)
+            
+            return float_data
+        print("----------------")
+
+
+
+while 1:
+    cell_Vs = get_cell_data('soc')
+    break
+    # battery_state = get_cell_data('battery_state')
