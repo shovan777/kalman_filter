@@ -13,6 +13,7 @@ codes = {
     # meaning of each of the 13 bytes:
     # start byte, host address, command id, data length, data, checksum
     'soc': b'\xA5\x40\x90\x08\x00\x00\x00\x00\x00\x00\x00\x00\x7d',
+    'temp': b'\xA5\x40\x92\x08\x00\x00\x00\x00\x00\x00\x00\x00\x7d',
 }
 
 
@@ -78,6 +79,27 @@ def get_cell_data(code):
                 'voltage': voltage_data,
                 'current': current_data,
                 'soc': soc_data
+            }
+            print(float_data)
+            
+            return float_data
+        print("----------------")
+    elif code == 'temp':
+        print('inside temp')
+        if data:
+            # data is in 8 bits contained in byte 5 ~ 12
+            # max temperature in byte 4 offset by 40C
+            # max temperature cell no in byte 5
+            # min temperature in byte 6
+            # min temperature cell no in byte 7
+            temp_data = {
+                'max_temp': data[4] - 40,
+                'max_temp_cell_no': data[5],
+                'min_temp': data[6] - 40,
+                'min_temp_cell_no': data[7]
+            }
+            float_data = {
+                'temperature': temp_data
             }
             print(float_data)
             
