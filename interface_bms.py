@@ -1,8 +1,15 @@
 import time
 import serial
 # print("hello")
-# ser = serial.Serial('/dev/ttyUSB0', baudrate=9600,
-#                     parity=serial.PARITY_NONE, bytesize=serial.EIGHTBITS, timeout=1)
+ser = serial.Serial('/dev/ttyUSB0', baudrate=9600,
+                    parity=serial.PARITY_NONE, bytesize=serial.EIGHTBITS, timeout=1)
+
+def calculate_checksum(data):
+    """
+    Calculate the checksum for the given data.
+    The checksum is the sum of all bytes in the data, modulo 256.
+    """
+    return sum(data) % 256
 
 
 codes = {
@@ -12,9 +19,18 @@ codes = {
     # find soc for daly bms
     # meaning of each of the 13 bytes:
     # start byte, host address, command id, data length, data, checksum
-    'soc': b'\xA5\x40\x90\x08\x00\x00\x00\x00\x00\x00\x00\x00\x7d',
-    'temp': b'\xA5\x40\x92\x08\x00\x00\x00\x00\x00\x00\x00\x00\x7d',
+    'soc': b'\xA5\x40\x90\x08\x00\x00\x00\x00\x00\x00\x00\x00', #x7d,
+    'temp': b'\xA5\x40\x92\x08\x00\x00\x00\x00\x00\x00\x00\x00',
 }
+
+# attach checksum to each command
+for key in codes:
+    # print('key:', key, 'value:', codes[key])
+    checksum = calculate_checksum(codes[key])
+    codes[key] = codes[key] + bytes([checksum])
+    # print('new value:', codes[key])
+    # print('checksum:', checksum)
+    # print('-----------------')
 
 
 
@@ -22,9 +38,12 @@ def get_cell_data(code):
     print('inside get cell with code:', code)
     # print('fire:', codes[code])
     try:
-        # ser.write(codes[code])
-        # data = ser.readline()
-        data = b'\xa5\x01\x90\x08\x00\xc0\x00\x00u0\x03\xe8\x8e'
+        ser.write(codes[code])
+        data = ser.readline()
+        # sample soc data
+        # data = b'\xa5\x01\x90\x08\x00\xc0\x00\x00u0\x03\xe8\x8e'
+        # sample temp data
+        # data = b'\xa5\x01\x92\x08>\x01>\x01\xff\xff\xff\xff\xba'
 
         print(f'***DATA:, {data}')
         print('length of data: ',len(data))
@@ -109,6 +128,6 @@ def get_cell_data(code):
 
 
 while 1:
-    cell_Vs = get_cell_data('soc')
-    break
+    cell_Vs = get_cell_data('temp')
+    # break
     # battery_state = get_cell_data('battery_state')
