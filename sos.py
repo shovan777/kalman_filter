@@ -3,7 +3,7 @@ from matplotlib import pyplot as plt
 from typing import Callable
 
 
-def calculate_sos(h_x_tau: float, h_x100: float, tau: float, rev=False) -> Callable[[float], float]:
+def calculate_sos(h_x_tau: float, h_x100: float, tau: float, rev=False) -> tuple[Callable[[float], float], float]:
     """Calculate the state of safety (SOS) for a given input.
 
     This function computes the SOS based on the input value, 

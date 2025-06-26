@@ -1,5 +1,7 @@
 import time
 import serial
+from sos import calculate_sos
+
 # print("hello")
 ser = serial.Serial('/dev/ttyUSB0', baudrate=9600,
                     parity=serial.PARITY_NONE, bytesize=serial.EIGHTBITS, timeout=1)
@@ -117,17 +119,24 @@ def get_cell_data(code):
                 'min_temp': data[6] - 40,
                 'min_temp_cell_no': data[7]
             }
-            float_data = {
-                'temperature': temp_data
-            }
-            print(float_data)
             
-            return float_data
+            return temp_data
         print("----------------")
 
+safety_level = 0.8
+# # temperature
+degree_sign = u'\N{DEGREE SIGN}'
+sos_type = f"Temperature ({degree_sign}C)"
+h_x100 = 25
+h_x_tau = 90
+sos_80_temp, m = calculate_sos(h_x_tau, h_x100, safety_level)
 
 
 while 1:
-    cell_Vs = get_cell_data('temp')
+    temp_dict = get_cell_data('temp')
+    if temp_dict:
+        sos_80_temp(temp_dict['max_temp'])
+        print(f"Max Temp: {temp_dict['max_temp']}{degree_sign}C, "
+              f"SOS: {sos_80_temp(temp_dict['max_temp'])}")
     # break
     # battery_state = get_cell_data('battery_state')
