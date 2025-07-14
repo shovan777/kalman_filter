@@ -1,10 +1,9 @@
-import time
 import serial
 from sos import calculate_sos
 
-# print("hello")
 ser = serial.Serial('/dev/ttyUSB0', baudrate=9600,
                     parity=serial.PARITY_NONE, bytesize=serial.EIGHTBITS, timeout=1)
+print("BMS serial port opened successfully...")
 
 def calculate_checksum(data):
     """
@@ -15,9 +14,6 @@ def calculate_checksum(data):
 
 
 codes = {
-    'battery_state': b'\xDD\xA5\x03\x00\xFF\xFD\x77',
-    'per_cell_voltage': b'\xDD\xA5\x04\x00\xFF\xFC\x77',
-    'bms_version': b'\xDD\xA5\x04\x00\xFF\xFC\x77',
     # find soc for daly bms
     # meaning of each of the 13 bytes:
     # start byte, host address, command id, data length, data, checksum
@@ -25,19 +21,18 @@ codes = {
     'temp': b'\xA5\x40\x92\x08\x00\x00\x00\x00\x00\x00\x00\x00',
 }
 
+print("Calculating checksum for each command...")
 # attach checksum to each command
 for key in codes:
-    # print('key:', key, 'value:', codes[key])
     checksum = calculate_checksum(codes[key])
     codes[key] = codes[key] + bytes([checksum])
-    # print('new value:', codes[key])
-    # print('checksum:', checksum)
     # print('-----------------')
+print("Checksum calculated completed successfully!!!!")
 
 
 
 def get_cell_data(code):
-    print('inside get cell with code:', code)
+    # print('inside get cell with code:', code)
     # print('fire:', codes[code])
     try:
         ser.write(codes[code])
@@ -47,20 +42,11 @@ def get_cell_data(code):
         # sample temp data
         # data = b'\xa5\x01\x92\x08>\x01>\x01\xff\xff\xff\xff\xba'
 
-        print(f'***DATA:, {data}')
-        print('length of data: ',len(data))
+        # print(f'***DATA:, {data}')
+        # print('length of data: ',len(data))
     except:
         print('invalid code')
 
-    
-    # print(data[4],data[5])
-    #volt1 = data[4] << 8
-    #volt1 = volt1|data[5]
-    # print(volt1)
-    #volt2 = data[6] << 8
-    #volt2 = volt2|data[7]
-    # print(volt2)
-    #print(data, len(data))
     if code == 'per_cell_voltage':
         print('inside per_Cell')
         voltages_ordered = []
@@ -84,7 +70,6 @@ def get_cell_data(code):
                 print(int_data)
         print("----------------")
     elif code == 'soc':
-        print('inside soc')
         if data:
             # data is in 8 bits contained in byte 5 ~ 12
             # voltage in byte 4 and 5, 0.1V resolution
@@ -100,13 +85,9 @@ def get_cell_data(code):
                 'voltage': voltage_data,
                 'current': current_data,
                 'soc': soc_data
-            }
-            print(float_data)
-            
+            }            
             return float_data
-        print("----------------")
     elif code == 'temp':
-        print('inside temp')
         if data:
             # data is in 8 bits contained in byte 5 ~ 12
             # max temperature in byte 4 offset by 40C
@@ -119,24 +100,46 @@ def get_cell_data(code):
                 'min_temp': data[6] - 40,
                 'min_temp_cell_no': data[7]
             }
-            
             return temp_data
-        print("----------------")
 
-safety_level = 0.8
+safety_level = 0.8 # 80% safety level
 # # temperature
 degree_sign = u'\N{DEGREE SIGN}'
-sos_type = f"Temperature ({degree_sign}C)"
-h_x100 = 25
+h_x100 = 22
 h_x_tau = 90
-sos_80_temp, m = calculate_sos(h_x_tau, h_x100, safety_level)
+sos_temp, m = calculate_sos(h_x_tau, h_x100, safety_level)
 
+# # Discharge Current
+h_x100 = 20
+h_x_tau = 30
+sos_current, m = calculate_sos(h_x_tau, h_x100, safety_level)
 
+print("Starting to read data from BMS...")
 while 1:
     temp_dict = get_cell_data('temp')
+    sos_array = []
     if temp_dict:
-        sos_80_temp(temp_dict['max_temp'])
+        sos_val = sos_temp(temp_dict['max_temp'])
+        sos_array.append(sos_val)
         print(f"Max Temp: {temp_dict['max_temp']}{degree_sign}C, "
-              f"SOS: {sos_80_temp(temp_dict['max_temp'])}")
+              f"SOS for higher temp: {sos_val:.5f}")
+    
+    soc_dict = get_cell_data('soc')
+    if soc_dict:
+        sos_val = sos_current(soc_dict['current'])
+        sos_array.append(sos_val)
+        print(f"Current: {soc_dict['current']}A, "
+              f"SOC: {soc_dict['soc']}%, "
+              f"SOS for discharge current: {sos_val:.5f}")
+        
+    # multiply sos values to get overall sos
+    if sos_array:
+        overall_sos = 1
+        for sos in sos_array:
+            overall_sos *= sos
+        print(f"Overall SOS: {overall_sos:.5f}")
+    else:
+        print("No data received or SOS values not calculated.")
+    
     # break
     # battery_state = get_cell_data('battery_state')
